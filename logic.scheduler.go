@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/case-management-suite/common/config"
+	"github.com/case-management-suite/common/service"
 	"github.com/case-management-suite/common/utils"
 	"github.com/case-management-suite/models"
 	queue_api "github.com/case-management-suite/queue/api"
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -69,7 +69,7 @@ type WorkSchedulerImpl struct {
 	CastNotificationsChannel string
 	Queue                    queue_api.QueueService
 	QueueConfig              config.QueueConnectionConfig
-	log                      zerolog.Logger
+	service.ServiceUtils
 }
 
 func (w WorkSchedulerImpl) ExecuteCaseAction(record models.CaseRecord, action string, ctx context.Context) error {
@@ -81,7 +81,7 @@ func (w WorkSchedulerImpl) ExecuteCaseAction(record models.CaseRecord, action st
 		log.Debug().Str("record", fmt.Sprintf("%v", record)).Msg("Failed to marshal record into JSON before sending it to the queue")
 		return err
 	}
-	w.log.Debug().Str("UUID", record.ID).Str("service", "scheduler").Msg("Sending work unit to queue")
+	w.Logger.Debug().Str("UUID", record.ID).Str("service", "scheduler").Msg("Sending work unit to queue")
 	w.Queue.Send(ctx, w.CaseActionsChannel, data, 5)
 
 	return nil
@@ -115,6 +115,8 @@ func (w WorkSchedulerImpl) ListenForCaseActions(h func(models.CaseAction) error,
 }
 
 func connectToChannels[T models.CaseAction | models.CaseRecord](ctx context.Context, out *queue_api.QueueConsumerOutput, fn func(T) error) {
+	log.Info().Caller().Msg("Connect to channels")
+	defer log.Info().Caller().Msg("Connected to channels")
 	for {
 		select {
 		case msg := <-out.Out:
@@ -144,7 +146,7 @@ func (w WorkSchedulerImpl) ListenForCaseUpdates(h func(models.CaseRecord) error,
 func (w WorkSchedulerImpl) NotifyCaseUpdate(record models.CaseRecord, ctx context.Context) error {
 	data, err := json.Marshal(record)
 	if err != nil {
-		w.log.Debug().Str("record", fmt.Sprintf("%v", record)).Msg("Failed to marshal record into JSON before sending it to the queue")
+		w.Logger.Debug().Str("record", fmt.Sprintf("%v", record)).Msg("Failed to marshal record into JSON before sending it to the queue")
 		return err
 	}
 
@@ -187,10 +189,12 @@ func NewWorkSchedulerBuilder(q queue_api.QueueService, appConfig config.AppConfi
 	return workSchedulerBuilder{queue: &q, caseActionsChannel: &c1, caseNotificationsChannel: &c2}
 }
 
-func NewWorkScheduler(queue queue_api.QueueService, appConfig config.AppConfig) WorkScheduler {
+func NewWorkScheduler(appConfig config.AppConfig, queue queue_api.QueueService, su service.ServiceUtils) WorkScheduler {
 	conf := appConfig.RulesServiceConfig.QueueConfig
-	logConf := appConfig.LogConfig
-	logger := logConf.Logger.Level(logConf.WorkScheduler)
-	logger.Debug().Str("CaseActionsChannel", conf.CaseActionsChannel).Str("CaseNotificationsChannel", conf.CaseNotificationsChannel).Msg("Initialized Work scheduler")
-	return WorkSchedulerImpl{Queue: queue, CaseActionsChannel: conf.CaseActionsChannel, CastNotificationsChannel: conf.CaseNotificationsChannel, log: logger}
+	su.Logger.Debug().Str("CaseActionsChannel", conf.CaseActionsChannel).Str("CaseNotificationsChannel", conf.CaseNotificationsChannel).Msg("Initialized Work scheduler")
+	return WorkSchedulerImpl{Queue: queue, CaseActionsChannel: conf.CaseActionsChannel, CastNotificationsChannel: conf.CaseNotificationsChannel, ServiceUtils: su}
+}
+
+func _() WorkSchedulerFactory {
+	return NewWorkScheduler
 }

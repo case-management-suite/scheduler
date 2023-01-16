@@ -10,6 +10,7 @@ import (
 
 	"github.com/case-management-suite/common/config"
 	common "github.com/case-management-suite/common/config"
+	"github.com/case-management-suite/common/service"
 	"github.com/case-management-suite/models"
 	"github.com/case-management-suite/queue"
 	"github.com/case-management-suite/scheduler"
@@ -21,15 +22,15 @@ import (
 func SetupTest(stub bool) scheduler.WorkScheduler {
 	appConfig := common.NewLocalTestAppConfig()
 	if stub {
-		queueService := queue.QueueServiceFactory(config.GoChannels)(appConfig.RulesServiceConfig.QueueConfig, appConfig.LogConfig)
+		queueService := queue.QueueServiceFactory(config.GoChannels)(appConfig.RulesServiceConfig.QueueConfig, service.NewTestServiceUtils())
 
-		return scheduler.NewWorkScheduler(queueService, common.NewLocalTestAppConfig())
+		return scheduler.NewWorkScheduler(common.NewLocalTestAppConfig(), queueService, service.NewTestServiceUtils())
 	} else {
 		ch1 := uuid.NewString()
 		ch2 := uuid.NewString()
 
 		newQueueService := queue.QueueServiceFactory(config.RabbitMQ)
-		queueService := newQueueService(appConfig.RulesServiceConfig.QueueConfig, appConfig.LogConfig)
+		queueService := newQueueService(appConfig.RulesServiceConfig.QueueConfig, service.NewTestServiceUtils())
 		builder := scheduler.NewWorkSchedulerBuilder(queueService, appConfig)
 		builder.WithCaseActionsChannel(ch1)
 		builder.WithCaseNotificationsChannel(ch2)
